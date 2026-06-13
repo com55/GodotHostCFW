@@ -4,13 +4,18 @@ import { requireAuth } from './auth';
 import {
   listGames,
   getGame,
+  getGameId,
   getActiveIcon,
   createGame,
   addVersion,
   finalizeVersion,
   updateGame,
   deleteGame,
+  deactivateVersion,
+  setVersionStorage,
+  switchActiveVersion,
 } from '../db';
+import { callPi } from '../archive';
 
 export const games = new Hono<AppEnv>();
 
@@ -62,6 +67,10 @@ games.post('/:slug/finalize', requireAuth, async (c) => {
   const body = await c.req.json<{ version?: number; fileSize?: number; iconPath?: string }>();
   if (typeof body.version !== 'number') return c.json({ error: 'version is required' }, 400);
 
+  // Read current active version before finalizing so we can deactivate it after.
+  const before = await getGame(c.env.DB, slug);
+  const oldVersion = before?.activeVersion;
+
   const ok = await finalizeVersion(
     c.env.DB,
     slug,
@@ -71,6 +80,14 @@ games.post('/:slug/finalize', requireAuth, async (c) => {
   );
   if (!ok) return c.json({ error: 'Game not found' }, 404);
 
+  const gameId = await getGameId(c.env.DB, slug);
+  if (gameId && oldVersion !== undefined && oldVersion !== body.version) {
+    await deactivateVersion(c.env.DB, gameId, oldVersion);
+  }
+
+  // Fire-and-forget: ask Pi to download new version. Game is unaffected if Pi is offline.
+  callPi(c.env, 'download', { slug, version: body.version }).catch(() => {});
+
   const game = await getGame(c.env.DB, slug);
   return c.json({ game }, 201);
 });
@@ -78,6 +95,46 @@ games.post('/:slug/finalize', requireAuth, async (c) => {
 games.put('/:slug', requireAuth, async (c) => {
   const slug = c.req.param('slug');
   const body = await c.req.json<Record<string, unknown>>();
+
+  // If switching active version, check storage state first.
+  if (typeof body.activeVersion === 'number') {
+    const current = await getGame(c.env.DB, slug);
+    if (!current) return c.json({ error: 'Game not found' }, 404);
+
+    const target = current.versions.find((v) => v.version === body.activeVersion);
+    if (!target) return c.json({ error: 'Version not found' }, 404);
+
+    if (target.storage === 'restoring') {
+      return c.json({ error: 'Version is already being restored', restoring: true }, 409);
+    }
+
+    if (target.storage === 'local') {
+      const gameId = await getGameId(c.env.DB, slug);
+      if (!gameId) return c.json({ error: 'Game not found' }, 404);
+      await setVersionStorage(c.env.DB, gameId, target.version, 'restoring');
+
+      const piOk = await callPi(c.env, 'restore', { slug, version: target.version });
+      if (!piOk) {
+        // Pi offline — leave as 'restoring' (cron will retry) or revert based on user choice.
+        // Return 503 so the dashboard can prompt the user.
+        return c.json(
+          {
+            error:
+              'ไม่สามารถ restore ได้เนื่องจากไม่สามารถเชื่อมต่อที่เก็บข้อมูลได้',
+            queued: true,
+          },
+          503
+        );
+      }
+      // Pi accepted — restore-done callback will activate and set storage='r2'.
+      return c.json({ restoring: true });
+    }
+
+    // storage = 'r2': instant switch.
+    const game = await switchActiveVersion(c.env.DB, slug, body.activeVersion);
+    return c.json({ game });
+  }
+
   const game = await updateGame(c.env.DB, slug, body);
   if (!game) return c.json({ error: 'Game not found' }, 404);
   return c.json({ game });

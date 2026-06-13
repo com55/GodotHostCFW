@@ -28,6 +28,8 @@ interface VersionRow {
   file_size: number;
   icon_path: string;
   status: string;
+  storage: 'r2' | 'local' | 'restoring';
+  has_local_copy: number;
 }
 
 function toVersion(r: VersionRow): GameVersion {
@@ -36,6 +38,8 @@ function toVersion(r: VersionRow): GameVersion {
     uploadedAt: r.uploaded_at,
     fileSize: r.file_size,
     folderName: `v${r.version}`,
+    storage: r.storage ?? 'r2',
+    hasLocalCopy: (r.has_local_copy ?? 0) === 1,
   };
 }
 
@@ -78,6 +82,12 @@ async function readyVersions(db: D1Database, gameId: string): Promise<GameVersio
 
 async function rawGame(db: D1Database, slug: string): Promise<GameRow | null> {
   return db.prepare('SELECT * FROM games WHERE slug = ?').bind(slug).first<GameRow>();
+}
+
+/** Returns the internal game id for a slug, or null if not found. */
+export async function getGameId(db: D1Database, slug: string): Promise<string | null> {
+  const g = await rawGame(db, slug);
+  return g?.id ?? null;
 }
 
 export async function getGame(db: D1Database, slug: string): Promise<Game | null> {
@@ -205,6 +215,112 @@ export async function updateGame(
     .run();
 
   return getGame(db, slug);
+}
+
+/** Set deactivated_at on a version (called when it stops being active). */
+export async function deactivateVersion(
+  db: D1Database,
+  gameId: string,
+  version: number
+): Promise<void> {
+  await db
+    .prepare('UPDATE versions SET deactivated_at = ? WHERE game_id = ? AND version = ?')
+    .bind(new Date().toISOString(), gameId, version)
+    .run();
+}
+
+/** Mark that Pi has a confirmed local copy of this version. */
+export async function confirmLocalCopy(
+  db: D1Database,
+  gameId: string,
+  version: number
+): Promise<void> {
+  await db
+    .prepare('UPDATE versions SET has_local_copy = 1 WHERE game_id = ? AND version = ?')
+    .bind(gameId, version)
+    .run();
+}
+
+/** Update the storage location of a version. */
+export async function setVersionStorage(
+  db: D1Database,
+  gameId: string,
+  version: number,
+  storage: 'r2' | 'local' | 'restoring'
+): Promise<void> {
+  await db
+    .prepare('UPDATE versions SET storage = ? WHERE game_id = ? AND version = ?')
+    .bind(storage, gameId, version)
+    .run();
+}
+
+/** Atomically switch active version and deactivate the old one. */
+export async function switchActiveVersion(
+  db: D1Database,
+  slug: string,
+  newVersion: number
+): Promise<Game | null> {
+  const g = await rawGame(db, slug);
+  if (!g) return null;
+  const now = new Date().toISOString();
+  const stmts = [
+    db
+      .prepare('UPDATE games SET active_version = ?, updated_at = ? WHERE id = ?')
+      .bind(newVersion, now, g.id),
+  ];
+  if (g.active_version !== newVersion) {
+    stmts.push(
+      db
+        .prepare('UPDATE versions SET deactivated_at = ? WHERE game_id = ? AND version = ?')
+        .bind(now, g.id, g.active_version)
+    );
+  }
+  await db.batch(stmts);
+  return getGame(db, slug);
+}
+
+interface ArchiveTask {
+  gameId: string;
+  slug: string;
+  version: number;
+}
+
+/** Versions that need to be downloaded to Pi (ready but Pi hasn't confirmed). */
+export async function getPendingDownloads(db: D1Database): Promise<ArchiveTask[]> {
+  const rows = await db
+    .prepare(
+      `SELECT g.id AS game_id, g.slug, v.version
+       FROM versions v JOIN games g ON g.id = v.game_id
+       WHERE v.status = 'ready' AND v.has_local_copy = 0 AND v.storage != 'restoring'`
+    )
+    .all<{ game_id: string; slug: string; version: number }>();
+  return rows.results.map((r) => ({ gameId: r.game_id, slug: r.slug, version: r.version }));
+}
+
+/** Versions that can be deleted from R2 (inactive >4h, Pi confirmed, still in R2). */
+export async function getPendingCleanups(db: D1Database): Promise<ArchiveTask[]> {
+  const rows = await db
+    .prepare(
+      `SELECT g.id AS game_id, g.slug, v.version
+       FROM versions v JOIN games g ON g.id = v.game_id
+       WHERE v.deactivated_at < datetime('now', '-4 hours')
+         AND v.has_local_copy = 1
+         AND v.storage = 'r2'`
+    )
+    .all<{ game_id: string; slug: string; version: number }>();
+  return rows.results.map((r) => ({ gameId: r.game_id, slug: r.slug, version: r.version }));
+}
+
+/** Versions stuck in 'restoring' (Pi needs to retry upload). */
+export async function getPendingRestores(db: D1Database): Promise<ArchiveTask[]> {
+  const rows = await db
+    .prepare(
+      `SELECT g.id AS game_id, g.slug, v.version
+       FROM versions v JOIN games g ON g.id = v.game_id
+       WHERE v.storage = 'restoring'`
+    )
+    .all<{ game_id: string; slug: string; version: number }>();
+  return rows.results.map((r) => ({ gameId: r.game_id, slug: r.slug, version: r.version }));
 }
 
 /** Deletes the game row (cascades versions). Returns the game id for R2 cleanup, or null. */

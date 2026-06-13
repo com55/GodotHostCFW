@@ -1,0 +1,8 @@
+{
+  "port": 8742,
+  "archiveDir": "/path/to/your/game/archive",
+  "workerUrl": "https://your-worker.your-account.workers.dev",
+  "archiveSecret": "",
+  "adminUsername": "admin",
+  "adminPassword": ""
+}

@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS versions (
   file_size   INTEGER NOT NULL DEFAULT 0,
   icon_path   TEXT NOT NULL DEFAULT '',            -- file within the version used as favicon
   status      TEXT NOT NULL DEFAULT 'pending',     -- 'pending' | 'ready'
+  storage     TEXT NOT NULL DEFAULT 'r2',          -- 'r2' | 'local' | 'restoring'
+  deactivated_at TEXT,                             -- null = active; timestamp = when deactivated
+  has_local_copy INTEGER NOT NULL DEFAULT 0,       -- 1 = Pi has confirmed local copy
   PRIMARY KEY (game_id, version),
   FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 );
