@@ -70,19 +70,38 @@ dashboard (or `wrangler` routes) so games are served from your own hostname.
 
 ## Migrating from the old project
 
-The old project stored games on disk (`data/games/`) with metadata in
-`data/db.json`. To move them:
+The old project stored games on disk (`data/games/<slug>/v<n>/`) with metadata in
+`data/db.json`. Migration is two steps: copy the files into R2, then load the
+metadata into D1. The Worker must already be deployed with secrets set.
+
+### 1. Upload game files to R2
+
+`wrangler r2 object put` is capped at **300 MiB per file**, and Godot `.pck`
+files routinely exceed that. So `put-dir.mjs` uploads a whole version folder
+(any file size) through the deployed Worker's multipart API instead:
 
 ```bash
-# Uploads every file to R2 and writes migrate.sql for the metadata
-node scripts/migrate.mjs /path/to/old/your-game-data/data
+WORKER_URL=https://<your-worker>.workers.dev \
+ADMIN_USERNAME=admin ADMIN_PASSWORD=<your-admin-password> \
+  node scripts/put-dir.mjs /path/to/old/data/games/<slug>/v<n> games/<slug>/v<n>
+```
 
-# Load the metadata into D1
+### 2. Load metadata into D1
+
+`migrate.mjs` reads `db.json` and writes `migrate.sql`:
+
+```bash
+# --active-only : only the game's active version (skip old history)
+# --sql-only    : just write migrate.sql, don't upload (files done in step 1)
+node scripts/migrate.mjs /path/to/old/data --active-only --sql-only
 npx wrangler d1 execute godot_host --remote --file=./migrate.sql
 ```
 
-Run the migration where `wrangler` is authenticated. If the Raspberry Pi runs
-out of memory on large `.pck` uploads, run it from the PC instead.
+Notes:
+- Without `--sql-only`, `migrate.mjs` also uploads files via
+  `wrangler r2 object put` — convenient for small games, but it fails on files
+  >300 MiB. For large games, use `put-dir.mjs` (step 1) + `migrate.mjs --sql-only`.
+- `migrate.sql` may contain private access codes, so it is gitignored.
 
 ## Notes / limits
 
@@ -92,6 +111,7 @@ out of memory on large `.pck` uploads, run it from the PC instead.
 - **COOP/COEP** are set only on game files, matching the original. Godot
   single-threaded web exports work as-is; multi-threaded exports rely on these
   headers for cross-origin isolation.
-- **Building on the Pi:** `wrangler dev/deploy` invoke `workerd`, which can OOM
-  on a Raspberry Pi (48-bit VA / tcmalloc). Typecheck works (`npx tsc --noEmit`);
-  run `wrangler dev`/`deploy` from the PC if the Pi can't.
+- **Building on the Pi:** `wrangler deploy` and `npx tsc --noEmit` both work on a
+  Raspberry Pi. `wrangler types` spawns `workerd` and can OOM (48-bit VA /
+  tcmalloc) — it is not required, since `Env` is declared in `src/types.ts`. If
+  `wrangler dev` ever hits the same limit, run it from the PC.
