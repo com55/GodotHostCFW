@@ -1,0 +1,7 @@
+node_modules/
+.dev.vars
+.wrangler/
+worker-configuration.d.ts
+dist/
+*.log
+migrate.sql

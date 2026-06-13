@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "godot-host-cfw",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-13",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    // API, game files, and player pages are handled by the Worker.
+    // Everything else (dashboard UI, static assets) is served directly from ./public.
+    "run_worker_first": ["/api/*", "/g/*", "/play/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "godot_host",
+      "database_id": "d3e871f5-4b71-418c-9fed-9c94d90088ee"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "godot-games"
+    }
+  ],
+  "observability": { "enabled": true },
+  "vars": {
+    "ADMIN_USERNAME": "admin"
+  }
+}

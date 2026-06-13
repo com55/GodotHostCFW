@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Dashboard for managing and deploying Godot web games">
+  <title>Game Host Dashboard</title>
+  <link rel="icon" type="image/png" href="/dashboard/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/dashboard/style.css">
+</head>
+<body>
+  <!-- Login Screen -->
+  <div id="login-screen" class="screen active">
+    <div class="login-bg">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+    <div class="login-container">
+      <div class="login-card">
+        <div class="login-logo">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#logo-grad)" />
+            <path d="M16 20L24 14L32 20V30L24 36L16 30V20Z" fill="white" fill-opacity="0.9"/>
+            <path d="M24 14V36M16 20L32 30M32 20L16 30" stroke="white" stroke-opacity="0.3" stroke-width="1"/>
+            <defs>
+              <linearGradient id="logo-grad" x1="4" y1="4" x2="44" y2="44">
+                <stop stop-color="#667eea"/>
+                <stop offset="1" stop-color="#764ba2"/>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <h1 class="login-title">Game Host</h1>
+        <p class="login-subtitle">Self-hosted Godot game platform</p>
+        <form id="login-form" autocomplete="on">
+          <div class="input-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" required autocomplete="username" placeholder="Enter username">
+          </div>
+          <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter password">
+          </div>
+          <div id="login-error" class="error-msg hidden"></div>
+          <button type="submit" id="login-btn" class="btn btn-primary btn-full">
+            <span class="btn-text">Sign In</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Screen -->
+  <div id="dashboard-screen" class="screen">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+          <rect x="4" y="4" width="40" height="40" rx="12" fill="url(#hdr-grad)" />
+          <path d="M16 20L24 14L32 20V30L24 36L16 30V20Z" fill="white" fill-opacity="0.9"/>
+          <defs>
+            <linearGradient id="hdr-grad" x1="4" y1="4" x2="44" y2="44">
+              <stop stop-color="#667eea"/>
+              <stop offset="1" stop-color="#764ba2"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <h2 class="header-title">Game Host</h2>
+      </div>
+      <div class="header-right">
+        <span id="admin-name" class="admin-badge">admin</span>
+        <button id="logout-btn" class="btn btn-ghost btn-sm">Logout</button>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+      <!-- Stats Bar -->
+      <div class="stats-bar">
+        <div class="stat-card">
+          <div class="stat-icon">🎮</div>
+          <div class="stat-info">
+            <span id="stat-total" class="stat-value">0</span>
+            <span class="stat-label">Total Games</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🌐</div>
+          <div class="stat-info">
+            <span id="stat-public" class="stat-value">0</span>
+            <span class="stat-label">Public</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🔒</div>
+          <div class="stat-info">
+            <span id="stat-private" class="stat-value">0</span>
+            <span class="stat-label">Private</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="section-header">
+        <h3>Your Games</h3>
+        <button id="upload-btn" class="btn btn-primary">
+          <span class="btn-icon">+</span> Deploy New Game
+        </button>
+      </div>
+
+      <!-- Game List -->
+      <div id="games-list" class="games-grid">
+        <!-- Games rendered here -->
+      </div>
+      <div id="empty-state" class="empty-state hidden">
+        <div class="empty-icon">🚀</div>
+        <h3>No games deployed yet</h3>
+        <p>Upload your first Godot web export to get started</p>
+        <button id="upload-btn-empty" class="btn btn-primary">Deploy Your First Game</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Upload Modal -->
+  <div id="upload-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="upload-modal-title">Deploy New Game</h3>
+        <button class="modal-close" data-close="upload-modal">&times;</button>
+      </div>
+      <form id="upload-form">
+        <div class="input-group">
+          <label for="game-title">Game Title *</label>
+          <input type="text" id="game-title" name="title" required placeholder="My Awesome Game">
+        </div>
+        <div class="input-group">
+          <label for="game-desc">Description</label>
+          <textarea id="game-desc" name="description" rows="3" placeholder="A short description of your game..."></textarea>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label for="game-visibility">Visibility</label>
+            <select id="game-visibility" name="visibility">
+              <option value="public">🌐 Public</option>
+              <option value="private">🔒 Private</option>
+            </select>
+          </div>
+          <div class="input-group" id="access-code-group">
+            <label for="game-access-code">Access Code</label>
+            <input type="text" id="game-access-code" name="accessCode" placeholder="Enter access code">
+          </div>
+        </div>
+        <div class="input-group">
+          <label>Game Files (ZIP) *</label>
+          <div id="drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+              <span class="drop-icon">📦</span>
+              <p class="drop-text">Drag & drop your Godot web export ZIP here</p>
+              <p class="drop-hint">or click to browse</p>
+            </div>
+            <input type="file" id="game-file" accept=".zip" class="drop-input">
+          </div>
+          <div id="file-info" class="file-info hidden">
+            <span id="file-name" class="file-name"></span>
+            <span id="file-size" class="file-size"></span>
+            <button type="button" id="file-remove" class="btn-icon-sm">&times;</button>
+          </div>
+        </div>
+        <div id="upload-progress-container" class="progress-container hidden">
+          <div class="progress-bar">
+            <div id="upload-progress-bar" class="progress-fill"></div>
+          </div>
+          <span id="upload-progress-text" class="progress-text">0%</span>
+        </div>
+        <div id="upload-error" class="error-msg hidden"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close="upload-modal">Cancel</button>
+          <button type="submit" id="upload-submit-btn" class="btn btn-primary">
+            <span class="btn-text">Deploy</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div id="edit-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Edit Game Settings</h3>
+        <button class="modal-close" data-close="edit-modal">&times;</button>
+      </div>
+      <form id="edit-form">
+        <input type="hidden" id="edit-slug">
+        <div class="input-group">
+          <label for="edit-title">Game Title</label>
+          <input type="text" id="edit-title" required>
+        </div>
+        <div class="input-group">
+          <label for="edit-desc">Description</label>
+          <textarea id="edit-desc" rows="3"></textarea>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label for="edit-visibility">Visibility</label>
+            <select id="edit-visibility">
+              <option value="public">🌐 Public</option>
+              <option value="private">🔒 Private</option>
+            </select>
+          </div>
+          <div class="input-group" id="edit-access-code-group">
+            <label for="edit-access-code">Access Code</label>
+            <input type="text" id="edit-access-code" placeholder="Enter access code">
+          </div>
+        </div>
+        <!-- Version selector -->
+        <div class="input-group" id="version-group">
+          <label for="edit-active-version">Active Version</label>
+          <select id="edit-active-version"></select>
+        </div>
+        <div id="edit-error" class="error-msg hidden"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close="edit-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- New Version Modal -->
+  <div id="version-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Upload New Version</h3>
+        <button class="modal-close" data-close="version-modal">&times;</button>
+      </div>
+      <form id="version-form">
+        <input type="hidden" id="version-slug">
+        <div class="input-group">
+          <label>Game Files (ZIP) *</label>
+          <div id="version-drop-zone" class="drop-zone">
+            <div class="drop-zone-content">
+              <span class="drop-icon">📦</span>
+              <p class="drop-text">Drag & drop new version ZIP here</p>
+              <p class="drop-hint">or click to browse</p>
+            </div>
+            <input type="file" id="version-file" accept=".zip" class="drop-input">
+          </div>
+          <div id="version-file-info" class="file-info hidden">
+            <span id="version-file-name" class="file-name"></span>
+            <span id="version-file-size" class="file-size"></span>
+            <button type="button" id="version-file-remove" class="btn-icon-sm">&times;</button>
+          </div>
+        </div>
+        <div id="version-progress-container" class="progress-container hidden">
+          <div class="progress-bar">
+            <div id="version-progress-bar" class="progress-fill"></div>
+          </div>
+          <span id="version-progress-text" class="progress-text">0%</span>
+        </div>
+        <div id="version-error" class="error-msg hidden"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-close="version-modal">Cancel</button>
+          <button type="submit" id="version-submit-btn" class="btn btn-primary">
+            <span class="btn-text">Upload Version</span>
+            <span class="btn-loader hidden"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Confirm Modal -->
+  <div id="delete-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Delete Game</h3>
+        <button class="modal-close" data-close="delete-modal">&times;</button>
+      </div>
+      <p class="modal-body-text">Are you sure you want to delete <strong id="delete-game-name"></strong>? This action cannot be undone.</p>
+      <input type="hidden" id="delete-slug">
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close="delete-modal">Cancel</button>
+        <button id="delete-confirm-btn" class="btn btn-danger">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script type="module" src="/dashboard/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+import { Hono } from 'hono';
+import type { AppEnv } from '../types';
+import { requireAuth } from './auth';
+import {
+  listGames,
+  getGame,
+  getActiveIcon,
+  createGame,
+  addVersion,
+  finalizeVersion,
+  updateGame,
+  deleteGame,
+} from '../db';
+
+export const games = new Hono<AppEnv>();
+
+// ---- Protected (admin) routes ----
+
+games.get('/', requireAuth, async (c) => {
+  return c.json({ games: await listGames(c.env.DB) });
+});
+
+games.get('/:slug', requireAuth, async (c) => {
+  const game = await getGame(c.env.DB, c.req.param('slug'));
+  if (!game) return c.json({ error: 'Game not found' }, 404);
+  return c.json({ game });
+});
+
+// Create a new game (returns slug + version to upload files under).
+games.post('/', requireAuth, async (c) => {
+  const body = await c.req.json<{
+    title?: string;
+    description?: string;
+    visibility?: 'public' | 'private';
+    accessCode?: string;
+  }>();
+
+  const title = (body.title ?? '').trim();
+  if (!title) return c.json({ error: 'Title is required' }, 400);
+
+  const { slug, version } = await createGame(c.env.DB, {
+    title,
+    description: body.description ?? '',
+    visibility: body.visibility === 'private' ? 'private' : 'public',
+    accessCode: body.accessCode ?? '',
+  });
+
+  return c.json({ slug, version }, 201);
+});
+
+// Create a new version for an existing game.
+games.post('/:slug/versions', requireAuth, async (c) => {
+  const slug = c.req.param('slug');
+  const version = await addVersion(c.env.DB, slug);
+  if (version === null) return c.json({ error: 'Game not found' }, 404);
+  return c.json({ slug, version }, 201);
+});
+
+// Finalize a version once all files are uploaded to R2: mark ready + activate.
+games.post('/:slug/finalize', requireAuth, async (c) => {
+  const slug = c.req.param('slug');
+  const body = await c.req.json<{ version?: number; fileSize?: number; iconPath?: string }>();
+  if (typeof body.version !== 'number') return c.json({ error: 'version is required' }, 400);
+
+  const ok = await finalizeVersion(
+    c.env.DB,
+    slug,
+    body.version,
+    body.fileSize ?? 0,
+    body.iconPath ?? ''
+  );
+  if (!ok) return c.json({ error: 'Game not found' }, 404);
+
+  const game = await getGame(c.env.DB, slug);
+  return c.json({ game }, 201);
+});
+
+games.put('/:slug', requireAuth, async (c) => {
+  const slug = c.req.param('slug');
+  const body = await c.req.json<Record<string, unknown>>();
+  const game = await updateGame(c.env.DB, slug, body);
+  if (!game) return c.json({ error: 'Game not found' }, 404);
+  return c.json({ game });
+});
+
+games.delete('/:slug', requireAuth, async (c) => {
+  const slug = c.req.param('slug');
+  const ok = await deleteGame(c.env.DB, slug);
+  if (!ok) return c.json({ error: 'Game not found' }, 404);
+
+  // Remove all R2 objects for this game (games/<slug>/...).
+  await deletePrefix(c.env.BUCKET, `games/${slug}/`);
+  return c.json({ success: true });
+});
+
+// ---- Public routes (player page) ----
+
+games.post('/:slug/verify', async (c) => {
+  const slug = c.req.param('slug');
+  const { accessCode } = await c.req.json<{ accessCode?: string }>();
+
+  const game = await getGame(c.env.DB, slug);
+  if (!game) return c.json({ error: 'Game not found' }, 404);
+  if (game.visibility !== 'private') return c.json({ granted: true });
+  if (game.accessCode === accessCode) return c.json({ granted: true });
+
+  return c.json({ error: 'Invalid access code', granted: false }, 403);
+});
+
+// Public-safe info used by the player to load the game.
+games.get('/:slug/info', async (c) => {
+  const slug = c.req.param('slug');
+  const game = await getGame(c.env.DB, slug);
+  if (!game) return c.json({ error: 'Game not found' }, 404);
+
+  const active = game.versions.find((v) => v.version === game.activeVersion);
+  if (!active) return c.json({ error: 'No active version' }, 404);
+
+  return c.json({
+    slug: game.slug,
+    title: game.title,
+    description: game.description,
+    visibility: game.visibility,
+    activeVersion: game.activeVersion,
+    iconPath: await getActiveIcon(c.env.DB, slug),
+  });
+});
+
+/** Delete every object under a prefix, paginating through the listing. */
+async function deletePrefix(bucket: R2Bucket, prefix: string): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, cursor, limit: 1000 });
+    if (listed.objects.length > 0) {
+      await bucket.delete(listed.objects.map((o) => o.key));
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+}

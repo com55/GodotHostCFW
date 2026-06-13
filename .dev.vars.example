@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local `wrangler dev`. These are secrets in production
+# (set with: wrangler secret put ADMIN_PASSWORD / JWT_SECRET).
+ADMIN_PASSWORD=changeme
+JWT_SECRET=replace-this-with-a-random-secret-key-at-least-32-chars

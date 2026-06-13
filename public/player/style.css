@@ -1,0 +1,305 @@
+/* ========================================
+   Game Player Styles
+   ======================================== */
+
+:root {
+  --bg: #0a0a0f;
+  --bg-card: rgba(255, 255, 255, 0.04);
+  --bg-glass: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e8e8ed;
+  --text-dim: #8b8b9e;
+  --accent: #667eea;
+  --accent-end: #764ba2;
+  --accent-glow: rgba(102, 126, 234, 0.3);
+  --danger: #f87171;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ========================================
+   Access Code Screen
+   ======================================== */
+
+.access-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 1.5rem;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+
+.access-screen::before {
+  content: '';
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.access-card {
+  position: relative;
+  background: var(--bg-card);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3rem 2.5rem;
+  text-align: center;
+  max-width: 400px;
+  width: 100%;
+  animation: slideUp 0.5s ease;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.access-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.access-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent-end));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+
+.access-subtitle {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  margin-bottom: 2rem;
+  line-height: 1.5;
+}
+
+.access-input-wrapper {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.access-input-wrapper input {
+  flex: 1;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.access-input-wrapper input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.access-input-wrapper input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+
+.access-btn {
+  padding: 0 1.25rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent-end));
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 12px var(--accent-glow);
+}
+
+.access-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+
+.access-btn:active {
+  transform: translateY(0);
+}
+
+.access-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  margin-top: 0.75rem;
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ========================================
+   Loading Screen
+   ======================================== */
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+}
+
+.loading-content {
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+/* ========================================
+   Game Container
+   ======================================== */
+
+.game-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #000;
+}
+
+.game-iframe {
+  flex: 1;
+  width: 100%;
+  border: none;
+  background: #000;
+}
+
+.game-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 1rem;
+  background: rgba(10, 10, 15, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.game-container:hover .game-controls {
+  opacity: 1;
+}
+
+.game-title-bar {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-controls-right {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.control-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+/* ========================================
+   Error Screen
+   ======================================== */
+
+.error-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background: var(--bg);
+}
+
+.error-card {
+  text-align: center;
+  padding: 2rem;
+}
+
+.error-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.error-message {
+  color: var(--text-dim);
+  margin-top: 0.5rem;
+}
+
+/* Fullscreen adjustments */
+:fullscreen .game-controls,
+:-webkit-full-screen .game-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}
