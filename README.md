@@ -111,7 +111,6 @@ Notes:
 - **COOP/COEP** are set only on game files, matching the original. Godot
   single-threaded web exports work as-is; multi-threaded exports rely on these
   headers for cross-origin isolation.
-- **Building on the Pi:** `wrangler deploy` and `npx tsc --noEmit` both work on a
-  Raspberry Pi. `wrangler types` spawns `workerd` and can OOM (48-bit VA /
-  tcmalloc) — it is not required, since `Env` is declared in `src/types.ts`. If
-  `wrangler dev` ever hits the same limit, run it from the PC.
+- **`wrangler types`** spawns `workerd` and can run out of memory on low-memory
+  or ARM machines. It is not required — `Env` is declared in `src/types.ts` — so
+  you can skip it. `wrangler deploy` and `npx tsc --noEmit` have no such issue.

@@ -3,11 +3,12 @@
 // Cloudflare D1 (metadata) and R2 (game files).
 //
 // Usage:
-//   node scripts/migrate.mjs /path/to/old/your-game-data/data
+//   node scripts/migrate.mjs /path/to/old/data [--active-only] [--sql-only]
 //
 // It writes migrate.sql (D1 inserts) and uploads every game file to R2 with
 // `wrangler r2 object put ... --remote`. Run from a machine where `wrangler` is
-// logged in. If the Raspberry Pi struggles with large uploads, run this on the PC.
+// logged in. Note: `wrangler r2 object put` caps files at 300 MiB — for larger
+// `.pck` files use scripts/put-dir.mjs (Worker multipart API) and pass --sql-only.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
