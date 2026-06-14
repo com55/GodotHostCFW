@@ -42,6 +42,12 @@ internal.get('/list-version', async (c) => {
   const versionStr = c.req.query('version');
   if (!slug || !versionStr) return c.json({ error: 'slug and version required' }, 400);
 
+  if (!/^[a-z0-9][a-z0-9-_]{0,63}$/i.test(slug) || !/^\d+$/.test(versionStr)) {
+    return c.json({ error: 'Invalid slug or version' }, 400);
+  }
+  const gameId = await getGameId(c.env.DB, slug);
+  if (!gameId) return c.json({ error: 'Game not found' }, 404);
+
   const prefix = `games/${slug}/v${versionStr}/`;
   const keys: string[] = [];
   let cursor: string | undefined;

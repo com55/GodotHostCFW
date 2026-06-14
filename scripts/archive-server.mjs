@@ -9,7 +9,7 @@
 import { createServer } from 'node:http';
 import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { join, relative, dirname } from 'node:path';
+import { join, relative, dirname, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 
 // ---- Config ----------------------------------------------------------------
@@ -28,6 +28,25 @@ try {
 }
 
 const { port, archiveDir, workerUrl, archiveSecret, adminUsername, adminPassword } = cfg;
+
+// ---- Path safety -----------------------------------------------------------
+
+function safeVersionDir(slug, version) {
+  if (typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-_]{0,63}$/i.test(slug))
+    throw new Error('bad slug');
+  const v = Number(version);
+  if (!Number.isInteger(v) || v < 1 || v > 1_000_000) throw new Error('bad version');
+  const base = resolve(archiveDir);
+  const dir = resolve(base, slug, `v${v}`);
+  if (dir !== base && !dir.startsWith(base + sep)) throw new Error('path escape');
+  return { dir, version: v };
+}
+
+function safeKey(key) {
+  if (typeof key !== 'string' || key.startsWith('/') || key.split('/').includes('..'))
+    throw new Error('bad key');
+  return key;
+}
 
 // ---- Auth helpers ----------------------------------------------------------
 
@@ -48,34 +67,35 @@ async function loginWithRetry(attempts = 6) {
 // ---- R2 download -----------------------------------------------------------
 
 async function downloadVersion(slug, version) {
+  const { dir: versionDir, version: v } = safeVersionDir(slug, version);
   const cookie = await loginWithRetry();
 
-  // Get file list from Worker
   const listRes = await fetch(
-    `${workerUrl}/api/internal/list-version?slug=${encodeURIComponent(slug)}&version=${version}`,
+    `${workerUrl}/api/internal/list-version?slug=${encodeURIComponent(slug)}&version=${v}`,
     { headers: { 'x-archive-secret': archiveSecret } }
   );
   if (!listRes.ok) throw new Error(`list-version failed: ${listRes.status}`);
   const { keys } = await listRes.json();
 
-  const versionDir = join(archiveDir, slug, `v${version}`);
   mkdirSync(versionDir, { recursive: true });
 
   for (const key of keys) {
-    const destPath = join(versionDir, key);
+    const safeK = safeKey(key);
+    const destPath = resolve(versionDir, safeK);
+    if (!destPath.startsWith(versionDir + sep)) throw new Error(`key escapes versionDir: ${key}`);
     mkdirSync(dirname(destPath), { recursive: true });
 
     const fileRes = await fetch(
-      `${workerUrl}/g/${encodeURIComponent(slug)}/v${version}/${encodeURIComponent(key)}`,
+      `${workerUrl}/g/${encodeURIComponent(slug)}/v${v}/${encodeURIComponent(safeK)}`,
       { headers: { cookie } }
     );
-    if (!fileRes.ok) throw new Error(`download ${key}: ${fileRes.status}`);
+    if (!fileRes.ok) throw new Error(`download ${safeK}: ${fileRes.status}`);
 
     await pipeline(fileRes.body, createWriteStream(destPath));
-    process.stdout.write(`  ↓ ${key}\n`);
+    process.stdout.write(`  ↓ ${safeK}\n`);
   }
 
-  console.log(`[archive] downloaded ${slug}/v${version} (${keys.length} files)`);
+  console.log(`[archive] downloaded ${slug}/v${v} (${keys.length} files)`);
 }
 
 // ---- R2 upload (restore) ---------------------------------------------------
@@ -138,7 +158,7 @@ async function putMultipart(cookie, key, buf) {
 }
 
 async function restoreVersion(slug, version) {
-  const versionDir = join(archiveDir, slug, `v${version}`);
+  const { dir: versionDir, version: v } = safeVersionDir(slug, version);
   if (!existsSync(versionDir)) throw new Error(`No local copy at ${versionDir}`);
 
   const cookie = await loginWithRetry();
@@ -146,30 +166,29 @@ async function restoreVersion(slug, version) {
 
   for (const rel of files) {
     const buf = await readFile(join(versionDir, rel));
-    const key = `games/${slug}/v${version}/${rel.split('\\').join('/')}`;
+    const key = `games/${slug}/v${v}/${rel.split('\\').join('/')}`;
     console.log(`  ↑ ${key} (${(buf.length / 1048576).toFixed(1)} MB)`);
     if (buf.length <= PART) await putSmall(cookie, key, buf);
     else await putMultipart(cookie, key, buf);
   }
 
-  // Notify Worker that restore is complete
   const res = await fetch(`${workerUrl}/api/internal/restore-done`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-archive-secret': archiveSecret },
-    body: JSON.stringify({ slug, version }),
+    body: JSON.stringify({ slug, version: v }),
   });
   if (!res.ok) throw new Error(`restore-done callback failed: ${res.status}`);
 
-  console.log(`[archive] restored ${slug}/v${version} to R2`);
+  console.log(`[archive] restored ${slug}/v${v} to R2`);
 }
 
 // ---- Local copy check ------------------------------------------------------
 
 function hasLocalCopy(slug, version) {
-  const versionDir = join(archiveDir, slug, `v${version}`);
-  if (!existsSync(versionDir)) return false;
   try {
-    return walk(versionDir).length > 0;
+    const { dir } = safeVersionDir(slug, version);
+    if (!existsSync(dir)) return false;
+    return walk(dir).length > 0;
   } catch {
     return false;
   }
