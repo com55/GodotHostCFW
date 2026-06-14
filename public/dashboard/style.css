@@ -821,6 +821,16 @@ body {
   text-align: right;
 }
 
+.progress-fill-indeterminate {
+  width: 40%;
+  animation: progress-indeterminate 1.4s infinite ease-in-out;
+}
+
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-150%); }
+  100% { transform: translateX(350%); }
+}
+
 /* ========================================
    Toast Notifications
    ======================================== */

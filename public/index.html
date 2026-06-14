@@ -296,26 +296,36 @@
   <div id="restore-confirm-modal" class="modal-overlay hidden">
     <div class="modal modal-sm">
       <div class="modal-header">
-        <h3>Restore Version</h3>
+        <h3>Switch Version</h3>
       </div>
-      <p class="modal-body-text">เวอร์ชั่น <strong id="restore-version-label"></strong> เก็บอยู่บน Pi ระบบจะ restore ขึ้น R2 ก่อน อาจใช้เวลาสักครู่</p>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" id="restore-cancel-btn">ยกเลิก</button>
-        <button class="btn btn-primary" id="restore-confirm-btn">ดำเนินการ</button>
+      <!-- Confirm state -->
+      <div id="restore-confirm-body">
+        <p class="modal-body-text">Version <strong id="restore-version-label"></strong> has been archived. Restoring it may take a moment.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="restore-cancel-btn">Cancel</button>
+          <button class="btn btn-primary" id="restore-confirm-btn">Restore</button>
+        </div>
+      </div>
+      <!-- Progress state -->
+      <div id="restore-progress-body" class="hidden">
+        <p class="modal-body-text" id="restore-progress-text">Restoring version <strong id="restore-progress-label"></strong>…</p>
+        <div class="progress-container">
+          <div class="progress-bar"><div class="progress-fill progress-fill-indeterminate"></div></div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Pi Offline Modal -->
+  <!-- Storage Offline Modal -->
   <div id="pi-offline-modal" class="modal-overlay hidden">
     <div class="modal modal-sm">
       <div class="modal-header">
-        <h3>ไม่สามารถเชื่อมต่อได้</h3>
+        <h3>Cannot Connect</h3>
       </div>
-      <p class="modal-body-text">ไม่สามารถ restore ได้เนื่องจากไม่สามารถเชื่อมต่อที่เก็บข้อมูลได้<br>จะให้ระบบดำเนินการในภายหลังเมื่อสามารถทำได้ หรือยกเลิก?</p>
+      <p class="modal-body-text">ไม่สามารถเชื่อมต่อที่เก็บข้อมูลได้<br>จะให้ระบบดำเนินการให้อัตโนมัติเมื่อพร้อม หรือยกเลิก?</p>
       <div class="modal-actions">
-        <button class="btn btn-ghost" id="pi-offline-abort-btn">ยกเลิก</button>
-        <button class="btn btn-primary" id="pi-offline-queue-btn">ดำเนินการในภายหลัง</button>
+        <button class="btn btn-ghost" id="pi-offline-abort-btn">Cancel</button>
+        <button class="btn btn-primary" id="pi-offline-queue-btn">Queue for later</button>
       </div>
     </div>
   </div>

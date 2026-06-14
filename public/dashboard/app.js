@@ -701,6 +701,12 @@ async function submitEditGame(slug, body) {
     });
 
     if (res.ok) {
+      const data = await res.json();
+      if (data.restoring) {
+        // Pi accepted — show progress bar and poll until done
+        showRestoreProgress(slug, body.activeVersion);
+        return;
+      }
       toggle(editModal, false);
       showToast("Game updated!", "success");
       loadGames();
@@ -719,7 +725,7 @@ async function submitEditGame(slug, body) {
     }
 
     if (res.status === 409 && data.restoring) {
-      editError.textContent = "เวอร์ชั่นนี้กำลัง restore อยู่แล้ว กรุณารอสักครู่";
+      editError.textContent = "This version is already being restored. Please wait.";
       toggle(editError, true);
       return;
     }
@@ -751,7 +757,7 @@ editForm.addEventListener("submit", async (e) => {
   };
 
   if (storage === "restoring") {
-    editError.textContent = "เวอร์ชั่นนี้กำลัง restore อยู่แล้ว กรุณารอสักครู่";
+    editError.textContent = "This version is already being restored. Please wait.";
     toggle(editError, true);
     return;
   }
@@ -760,14 +766,50 @@ editForm.addEventListener("submit", async (e) => {
     // Show confirm before proceeding
     _pendingRestoreSlug = slug;
     _pendingRestoreBody = body;
-    const label = /** @type {HTMLElement} */ ($("#restore-version-label"));
-    label.textContent = `v${activeVersion}`;
+    /** @type {HTMLElement} */ ($("#restore-version-label")).textContent = `v${activeVersion}`;
     toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), true);
     return;
   }
 
   await submitEditGame(slug, body);
 });
+
+/**
+ * Switch restore-confirm modal from confirm state to progress bar,
+ * then poll until the version is active in R2.
+ * @param {string} slug
+ * @param {number} targetVersion
+ */
+function showRestoreProgress(slug, targetVersion) {
+  toggle(editModal, false);
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-body")), false);
+  toggle(/** @type {HTMLElement} */ ($("#restore-progress-body")), true);
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), true);
+  const label = /** @type {HTMLElement} */ ($("#restore-progress-label"));
+  label.textContent = `v${targetVersion}`;
+
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`${API.games}/${slug}`);
+      if (!res.ok) return;
+      const { game } = await res.json();
+      const v = (game?.versions || []).find(
+        (/** @type {any} */ v) => v.version === targetVersion,
+      );
+      if (v && v.storage === "r2" && game.activeVersion === targetVersion) {
+        clearInterval(timer);
+        toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), false);
+        // Reset modal to confirm state for next time
+        toggle(/** @type {HTMLElement} */ ($("#restore-confirm-body")), true);
+        toggle(/** @type {HTMLElement} */ ($("#restore-progress-body")), false);
+        showToast(`v${targetVersion} restored and active!`, "success");
+        loadGames();
+      }
+    } catch {
+      // network blip — keep polling
+    }
+  }, 3000);
+}
 
 // Restore confirm modal
 $("#restore-confirm-btn").addEventListener("click", async () => {
@@ -783,7 +825,7 @@ $("#restore-cancel-btn").addEventListener("click", () => {
 // Pi offline modal
 $("#pi-offline-queue-btn").addEventListener("click", () => {
   toggle(/** @type {HTMLElement} */ ($("#pi-offline-modal")), false);
-  showToast("จะ restore อัตโนมัติเมื่อ Pi กลับมา online", "info");
+  showToast("Restore queued — will run automatically when storage is reachable.", "info");
   loadGames();
 });
 $("#pi-offline-abort-btn").addEventListener("click", async () => {
