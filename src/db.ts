@@ -241,6 +241,20 @@ export async function confirmLocalCopy(
     .run();
 }
 
+/** Revert all restoring versions back to 'local', except the one being activated. */
+export async function cancelPendingRestores(
+  db: D1Database,
+  gameId: string,
+  exceptVersion: number
+): Promise<void> {
+  await db
+    .prepare(
+      "UPDATE versions SET storage = 'local' WHERE game_id = ? AND storage = 'restoring' AND version != ?"
+    )
+    .bind(gameId, exceptVersion)
+    .run();
+}
+
 /** Get the current storage value for a version. */
 export async function getVersionStorage(
   db: D1Database,

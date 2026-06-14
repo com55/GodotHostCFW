@@ -14,6 +14,7 @@ import {
   deactivateVersion,
   setVersionStorage,
   switchActiveVersion,
+  cancelPendingRestores,
 } from '../db';
 import { callPi } from '../archive';
 
@@ -104,13 +105,15 @@ games.put('/:slug', requireAuth, async (c) => {
     const target = current.versions.find((v) => v.version === body.activeVersion);
     if (!target) return c.json({ error: 'Version not found' }, 404);
 
+    // Cancel any queued restores for other versions before proceeding.
+    await cancelPendingRestores(c.env.DB, current.id, target.version);
+
     if (target.storage === 'restoring') {
       return c.json({ error: 'Version is already being restored', restoring: true }, 409 as 409);
     }
 
     if (target.storage === 'local') {
-      const gameId = await getGameId(c.env.DB, slug);
-      if (!gameId) return c.json({ error: 'Game not found' }, 404);
+      const gameId = current.id;
       await setVersionStorage(c.env.DB, gameId, target.version, 'restoring');
 
       const piOk = await callPi(c.env, 'restore', { slug, version: target.version });
@@ -130,7 +133,7 @@ games.put('/:slug', requireAuth, async (c) => {
       return c.json({ restoring: true });
     }
 
-    // storage = 'r2': instant switch.
+    // storage = 'r2' — instant switch.
     const game = await switchActiveVersion(c.env.DB, slug, body.activeVersion);
     return c.json({ game });
   }
