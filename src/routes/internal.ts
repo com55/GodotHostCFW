@@ -6,6 +6,7 @@ import {
   confirmLocalCopy,
   setVersionStorage,
   switchActiveVersion,
+  getVersionStorage,
 } from '../db';
 
 export const internal = new Hono<AppEnv>();
@@ -30,9 +31,19 @@ internal.post('/restore-done', async (c) => {
   const { slug, version } = await c.req.json<{ slug: string; version: number }>();
   const gameId = await getGameId(c.env.DB, slug);
   if (!gameId) return c.json({ error: 'Game not found' }, 404);
+
+  const currentStorage = await getVersionStorage(c.env.DB, gameId, version);
+  // Files are now in R2 regardless — update storage.
   await setVersionStorage(c.env.DB, gameId, version, 'r2');
-  const game = await switchActiveVersion(c.env.DB, slug, version);
-  return c.json({ game });
+
+  // Only activate if user didn't cancel (storage was still 'restoring').
+  if (currentStorage === 'restoring') {
+    const game = await switchActiveVersion(c.env.DB, slug, version);
+    return c.json({ game });
+  }
+
+  // User cancelled — files are in R2 but we don't activate.
+  return c.json({ ok: true, cancelled: true });
 });
 
 // Pi → Worker: list all R2 keys for a version so Pi knows what to download.

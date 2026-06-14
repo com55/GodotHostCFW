@@ -308,9 +308,12 @@
       </div>
       <!-- Progress state -->
       <div id="restore-progress-body" class="hidden">
-        <p class="modal-body-text" id="restore-progress-text">Restoring version <strong id="restore-progress-label"></strong>…</p>
+        <p class="modal-body-text">Restoring version <strong id="restore-progress-label"></strong>…</p>
         <div class="progress-container">
           <div class="progress-bar"><div class="progress-fill progress-fill-indeterminate"></div></div>
+        </div>
+        <div class="modal-actions" style="margin-top: 1rem;">
+          <button class="btn btn-ghost btn-sm" id="restore-abort-btn">Cancel restore</button>
         </div>
       </div>
     </div>

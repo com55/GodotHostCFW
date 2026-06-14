@@ -241,6 +241,19 @@ export async function confirmLocalCopy(
     .run();
 }
 
+/** Get the current storage value for a version. */
+export async function getVersionStorage(
+  db: D1Database,
+  gameId: string,
+  version: number
+): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT storage FROM versions WHERE game_id = ? AND version = ?')
+    .bind(gameId, version)
+    .first<{ storage: string }>();
+  return row?.storage ?? null;
+}
+
 /** Update the storage location of a version. */
 export async function setVersionStorage(
   db: D1Database,

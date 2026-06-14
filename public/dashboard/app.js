@@ -780,15 +780,23 @@ editForm.addEventListener("submit", async (e) => {
  * @param {string} slug
  * @param {number} targetVersion
  */
+/** @type {ReturnType<typeof setInterval> | null} */
+let _restoreTimer = null;
+
+function resetRestoreModal() {
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-body")), true);
+  toggle(/** @type {HTMLElement} */ ($("#restore-progress-body")), false);
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), false);
+}
+
 function showRestoreProgress(slug, targetVersion) {
   toggle(editModal, false);
   toggle(/** @type {HTMLElement} */ ($("#restore-confirm-body")), false);
   toggle(/** @type {HTMLElement} */ ($("#restore-progress-body")), true);
   toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), true);
-  const label = /** @type {HTMLElement} */ ($("#restore-progress-label"));
-  label.textContent = `v${targetVersion}`;
+  /** @type {HTMLElement} */ ($("#restore-progress-label")).textContent = `v${targetVersion}`;
 
-  const timer = setInterval(async () => {
+  _restoreTimer = setInterval(async () => {
     try {
       const res = await fetch(`${API.games}/${slug}`);
       if (!res.ok) return;
@@ -797,11 +805,9 @@ function showRestoreProgress(slug, targetVersion) {
         (/** @type {any} */ v) => v.version === targetVersion,
       );
       if (v && v.storage === "r2" && game.activeVersion === targetVersion) {
-        clearInterval(timer);
-        toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), false);
-        // Reset modal to confirm state for next time
-        toggle(/** @type {HTMLElement} */ ($("#restore-confirm-body")), true);
-        toggle(/** @type {HTMLElement} */ ($("#restore-progress-body")), false);
+        clearInterval(_restoreTimer);
+        _restoreTimer = null;
+        resetRestoreModal();
         showToast(`v${targetVersion} restored and active!`, "success");
         loadGames();
       }
@@ -810,6 +816,20 @@ function showRestoreProgress(slug, targetVersion) {
     }
   }, 3000);
 }
+
+$("#restore-abort-btn").addEventListener("click", async () => {
+  if (_restoreTimer) { clearInterval(_restoreTimer); _restoreTimer = null; }
+  resetRestoreModal();
+  if (_pendingRestoreSlug && _pendingRestoreBody) {
+    await fetch(`${API.games}/${_pendingRestoreSlug}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cancelRestore: _pendingRestoreBody.activeVersion }),
+    }).catch(() => {});
+  }
+  showToast("Restore cancelled.", "info");
+  loadGames();
+});
 
 // Restore confirm modal
 $("#restore-confirm-btn").addEventListener("click", async () => {
