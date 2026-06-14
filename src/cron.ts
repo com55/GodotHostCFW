@@ -11,6 +11,7 @@ export async function runCron(env: Env): Promise<void> {
   await retryDownloads(env);
   await cleanupR2(env);
   await retryRestores(env);
+  await cleanupStalePending(env);
 }
 
 /** Re-send download requests for versions Pi hasn't confirmed yet. */
@@ -42,6 +43,16 @@ async function retryRestores(env: Env): Promise<void> {
   for (const t of tasks) {
     await callPi(env, 'restore', { slug: t.slug, version: t.version });
   }
+}
+
+/** Remove pending versions >1h old and games that have no remaining versions. */
+async function cleanupStalePending(env: Env): Promise<void> {
+  await env.DB.prepare(
+    "DELETE FROM versions WHERE status = 'pending' AND uploaded_at < datetime('now', '-1 hour')"
+  ).run();
+  await env.DB.prepare(
+    'DELETE FROM games WHERE id NOT IN (SELECT DISTINCT game_id FROM versions)'
+  ).run();
 }
 
 async function deleteVersionFromR2(

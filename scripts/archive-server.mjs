@@ -68,38 +68,49 @@ async function loginWithRetry(attempts = 6) {
 
 async function downloadVersion(slug, version) {
   const { dir: versionDir, version: v } = safeVersionDir(slug, version);
-  const cookie = await loginWithRetry();
-
-  const listRes = await fetch(
-    `${workerUrl}/api/internal/list-version?slug=${encodeURIComponent(slug)}&version=${v}`,
-    { headers: { 'x-archive-secret': archiveSecret } }
-  );
-  if (!listRes.ok) throw new Error(`list-version failed: ${listRes.status}`);
-  const { keys } = await listRes.json();
-
-  mkdirSync(versionDir, { recursive: true });
-
-  for (const key of keys) {
-    const safeK = safeKey(key);
-    const destPath = resolve(versionDir, safeK);
-    if (!destPath.startsWith(versionDir + sep)) throw new Error(`key escapes versionDir: ${key}`);
-    mkdirSync(dirname(destPath), { recursive: true });
-
-    const fileRes = await fetch(
-      `${workerUrl}/g/${encodeURIComponent(slug)}/v${v}/${encodeURIComponent(safeK)}`,
-      { headers: { cookie } }
-    );
-    if (!fileRes.ok) throw new Error(`download ${safeK}: ${fileRes.status}`);
-
-    await pipeline(fileRes.body, createWriteStream(destPath));
-    process.stdout.write(`  ↓ ${safeK}\n`);
+  const flagKey = `${slug}:${v}`;
+  if (downloadFlags.has(flagKey)) {
+    console.log(`[archive] download already in progress for ${slug}/v${v}, skipping`);
+    return;
   }
+  downloadFlags.set(flagKey, true);
+  try {
+    const cookie = await loginWithRetry();
 
-  console.log(`[archive] downloaded ${slug}/v${v} (${keys.length} files)`);
+    const listRes = await fetch(
+      `${workerUrl}/api/internal/list-version?slug=${encodeURIComponent(slug)}&version=${v}`,
+      { headers: { 'x-archive-secret': archiveSecret } }
+    );
+    if (!listRes.ok) throw new Error(`list-version failed: ${listRes.status}`);
+    const { keys } = await listRes.json();
+
+    mkdirSync(versionDir, { recursive: true });
+
+    for (const key of keys) {
+      const safeK = safeKey(key);
+      const destPath = resolve(versionDir, safeK);
+      if (!destPath.startsWith(versionDir + sep)) throw new Error(`key escapes versionDir: ${key}`);
+      mkdirSync(dirname(destPath), { recursive: true });
+
+      const fileRes = await fetch(
+        `${workerUrl}/g/${encodeURIComponent(slug)}/v${v}/${encodeURIComponent(safeK)}`,
+        { headers: { cookie } }
+      );
+      if (!fileRes.ok) throw new Error(`download ${safeK}: ${fileRes.status}`);
+
+      await pipeline(fileRes.body, createWriteStream(destPath));
+      process.stdout.write(`  ↓ ${safeK}\n`);
+    }
+
+    console.log(`[archive] downloaded ${slug}/v${v} (${keys.length} files)`);
+  } finally {
+    downloadFlags.delete(flagKey);
+  }
 }
 
-// ---- Abort flags -----------------------------------------------------------
-// Key: `${slug}:${version}` — set to true to request mid-restore abort.
+// ---- In-flight guards ------------------------------------------------------
+// Key: `${slug}:${version}` — prevents duplicate concurrent operations.
+const downloadFlags = new Map();
 const abortFlags = new Map();
 
 // ---- R2 upload (restore) ---------------------------------------------------
@@ -166,6 +177,11 @@ async function restoreVersion(slug, version) {
   if (!existsSync(versionDir)) throw new Error(`No local copy at ${versionDir}`);
 
   const flagKey = `${slug}:${v}`;
+  // Skip if a restore for this version is already in flight (e.g. cron retry).
+  if (abortFlags.has(flagKey)) {
+    console.log(`[archive] restore already in progress for ${slug}/v${v}, skipping`);
+    return;
+  }
   abortFlags.set(flagKey, false);
 
   try {

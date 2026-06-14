@@ -6,7 +6,7 @@ import {
   confirmLocalCopy,
   setVersionStorage,
   switchActiveVersion,
-  getVersionStorage,
+  completeRestore,
 } from '../db';
 
 export const internal = new Hono<AppEnv>();
@@ -32,12 +32,10 @@ internal.post('/restore-done', async (c) => {
   const gameId = await getGameId(c.env.DB, slug);
   if (!gameId) return c.json({ error: 'Game not found' }, 404);
 
-  const currentStorage = await getVersionStorage(c.env.DB, gameId, version);
-  // Files are now in R2 regardless — update storage.
-  await setVersionStorage(c.env.DB, gameId, version, 'r2');
+  // Atomic conditional update: transitions restoring→r2 and tells us whether to activate.
+  const wasRestoring = await completeRestore(c.env.DB, gameId, version);
 
-  // Only activate if user didn't cancel (storage was still 'restoring').
-  if (currentStorage === 'restoring') {
+  if (wasRestoring) {
     const game = await switchActiveVersion(c.env.DB, slug, version);
     return c.json({ game });
   }

@@ -159,7 +159,7 @@ export async function addVersion(db: D1Database, slug: string): Promise<number |
   return next;
 }
 
-/** Mark a version ready, record size + icon, and activate it. */
+/** Mark a version ready, record size + icon, activate it, and deactivate the old one — all atomically. */
 export async function finalizeVersion(
   db: D1Database,
   slug: string,
@@ -171,7 +171,7 @@ export async function finalizeVersion(
   if (!g) return false;
   const now = new Date().toISOString();
 
-  await db.batch([
+  const stmts = [
     db
       .prepare(
         `UPDATE versions SET status = 'ready', file_size = ?, icon_path = ?, uploaded_at = ?
@@ -181,7 +181,15 @@ export async function finalizeVersion(
     db
       .prepare('UPDATE games SET active_version = ?, updated_at = ? WHERE id = ?')
       .bind(version, now, g.id),
-  ]);
+  ];
+  if (g.active_version !== version) {
+    stmts.push(
+      db
+        .prepare('UPDATE versions SET deactivated_at = ? WHERE game_id = ? AND version = ?')
+        .bind(now, g.id, g.active_version)
+    );
+  }
+  await db.batch(stmts);
   return true;
 }
 
@@ -241,18 +249,54 @@ export async function confirmLocalCopy(
     .run();
 }
 
-/** Revert all restoring versions back to 'local', except the one being activated. */
+/** Revert all restoring versions back to 'local', except the one being activated.
+ *  Returns the version numbers that were cancelled so callers can abort Pi. */
 export async function cancelPendingRestores(
   db: D1Database,
   gameId: string,
   exceptVersion: number
-): Promise<void> {
-  await db
+): Promise<number[]> {
+  const rows = await db
     .prepare(
-      "UPDATE versions SET storage = 'local' WHERE game_id = ? AND storage = 'restoring' AND version != ?"
+      "SELECT version FROM versions WHERE game_id = ? AND storage = 'restoring' AND version != ?"
     )
     .bind(gameId, exceptVersion)
+    .all<{ version: number }>();
+  const cancelled = rows.results.map((r) => r.version);
+  if (cancelled.length > 0) {
+    await db
+      .prepare(
+        "UPDATE versions SET storage = 'local' WHERE game_id = ? AND storage = 'restoring' AND version != ?"
+      )
+      .bind(gameId, exceptVersion)
+      .run();
+  }
+  return cancelled;
+}
+
+/**
+ * Atomically transition a version from 'restoring' → 'r2' and report whether it happened.
+ * Returns true  → version was still restoring (caller should activate it).
+ * Returns false → version was already cancelled; files are in R2 but don't activate.
+ */
+export async function completeRestore(
+  db: D1Database,
+  gameId: string,
+  version: number
+): Promise<boolean> {
+  const result = await db
+    .prepare(
+      "UPDATE versions SET storage = 'r2' WHERE game_id = ? AND version = ? AND storage = 'restoring'"
+    )
+    .bind(gameId, version)
     .run();
+  if ((result.meta.changes ?? 0) > 0) return true;
+  // Cancelled mid-race but Pi finished — files are in R2; update storage without activating.
+  await db
+    .prepare("UPDATE versions SET storage = 'r2' WHERE game_id = ? AND version = ?")
+    .bind(gameId, version)
+    .run();
+  return false;
 }
 
 /** Get the current storage value for a version. */

@@ -11,8 +11,8 @@ import {
   finalizeVersion,
   updateGame,
   deleteGame,
-  deactivateVersion,
   setVersionStorage,
+  getVersionStorage,
   switchActiveVersion,
   cancelPendingRestores,
 } from '../db';
@@ -68,10 +68,6 @@ games.post('/:slug/finalize', requireAuth, async (c) => {
   const body = await c.req.json<{ version?: number; fileSize?: number; iconPath?: string }>();
   if (typeof body.version !== 'number') return c.json({ error: 'version is required' }, 400);
 
-  // Read current active version before finalizing so we can deactivate it after.
-  const before = await getGame(c.env.DB, slug);
-  const oldVersion = before?.activeVersion;
-
   const ok = await finalizeVersion(
     c.env.DB,
     slug,
@@ -80,11 +76,6 @@ games.post('/:slug/finalize', requireAuth, async (c) => {
     body.iconPath ?? ''
   );
   if (!ok) return c.json({ error: 'Game not found' }, 404);
-
-  const gameId = await getGameId(c.env.DB, slug);
-  if (gameId && oldVersion !== undefined && oldVersion !== body.version) {
-    await deactivateVersion(c.env.DB, gameId, oldVersion);
-  }
 
   // Fire-and-forget: ask Pi to download new version. Game is unaffected if Pi is offline.
   callPi(c.env, 'download', { slug, version: body.version }).catch(() => {});
@@ -97,16 +88,23 @@ games.put('/:slug', requireAuth, async (c) => {
   const slug = c.req.param('slug');
   const body = await c.req.json<Record<string, unknown>>();
 
+  // Extract activeVersion so version switching and metadata updates are independent.
+  const activeVersion = typeof body.activeVersion === 'number' ? body.activeVersion : undefined;
+  const { activeVersion: _av, ...meta } = body;
+
   // If switching active version, check storage state first.
-  if (typeof body.activeVersion === 'number') {
+  if (activeVersion !== undefined) {
     const current = await getGame(c.env.DB, slug);
     if (!current) return c.json({ error: 'Game not found' }, 404);
 
-    const target = current.versions.find((v) => v.version === body.activeVersion);
+    const target = current.versions.find((v) => v.version === activeVersion);
     if (!target) return c.json({ error: 'Version not found' }, 404);
 
     // Cancel any queued restores for other versions before proceeding.
-    await cancelPendingRestores(c.env.DB, current.id, target.version);
+    const cancelled = await cancelPendingRestores(c.env.DB, current.id, target.version);
+    for (const v of cancelled) {
+      callPi(c.env, 'abort', { slug, version: v }).catch(() => {});
+    }
 
     if (target.storage === 'restoring') {
       return c.json({ error: 'Version is already being restored', restoring: true }, 409 as 409);
@@ -130,33 +128,44 @@ games.put('/:slug', requireAuth, async (c) => {
         );
       }
       // Pi accepted — restore-done callback will activate and set storage='r2'.
-      return c.json({ restoring: true });
+      return c.json({ restoring: true, meta });
     }
 
-    // storage = 'r2' — instant switch.
-    const game = await switchActiveVersion(c.env.DB, slug, body.activeVersion);
-    return c.json({ game });
+    // storage = 'r2' — instant switch (fall through to metadata update below).
+    await switchActiveVersion(c.env.DB, slug, activeVersion);
   }
 
   // Cancel a pending restore — revert storage back to 'local' and tell Pi to abort.
   if (typeof body.cancelRestore === 'number') {
     const gameId = await getGameId(c.env.DB, slug);
     if (!gameId) return c.json({ error: 'Game not found' }, 404);
+    const currentStorage = await getVersionStorage(c.env.DB, gameId, body.cancelRestore);
+    if (currentStorage !== 'restoring') return c.json({ ok: true });
     await setVersionStorage(c.env.DB, gameId, body.cancelRestore, 'local');
     callPi(c.env, 'abort', { slug, version: body.cancelRestore }).catch(() => {});
     return c.json({ ok: true });
   }
 
-  const game = await updateGame(c.env.DB, slug, body);
+  // Update metadata (title, description, visibility, accessCode).
+  const game = await updateGame(c.env.DB, slug, meta as any);
   if (!game) return c.json({ error: 'Game not found' }, 404);
   return c.json({ game });
 });
 
 games.delete('/:slug', requireAuth, async (c) => {
   const slug = c.req.param('slug');
-  const ok = await deleteGame(c.env.DB, slug);
-  if (!ok) return c.json({ error: 'Game not found' }, 404);
 
+  // Abort any in-progress restores on Pi before deleting so they don't
+  // re-create R2 objects after deletePrefix runs.
+  const current = await getGame(c.env.DB, slug);
+  if (!current) return c.json({ error: 'Game not found' }, 404);
+  for (const v of current.versions) {
+    if (v.storage === 'restoring') {
+      callPi(c.env, 'abort', { slug, version: v.version }).catch(() => {});
+    }
+  }
+
+  await deleteGame(c.env.DB, slug);
   // Remove all R2 objects for this game (games/<slug>/...).
   await deletePrefix(c.env.BUCKET, `games/${slug}/`);
   return c.json({ success: true });
@@ -170,7 +179,7 @@ games.post('/:slug/verify', async (c) => {
 
   const game = await getGame(c.env.DB, slug);
   if (!game) return c.json({ error: 'Game not found' }, 404);
-  if (game.visibility !== 'private') return c.json({ granted: true });
+  if (game.visibility === 'public') return c.json({ granted: true });
   if (game.accessCode === accessCode) return c.json({ granted: true });
 
   return c.json({ error: 'Invalid access code', granted: false }, 403);

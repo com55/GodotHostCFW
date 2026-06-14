@@ -9,7 +9,8 @@
     "types": "wrangler types",
     "db:schema": "wrangler d1 execute godot_host --remote --file=./schema.sql",
     "db:schema:local": "wrangler d1 execute godot_host --local --file=./schema.sql",
-    "vendor": "cp node_modules/fflate/esm/browser.js public/dashboard/vendor/fflate.module.js"
+    "vendor": "cp node_modules/fflate/esm/browser.js public/dashboard/vendor/fflate.module.js",
+    "archive": "node scripts/archive-server.mjs"
   },
   "dependencies": {
     "hono": "^4.6.14"
