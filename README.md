@@ -18,6 +18,7 @@ runtime.
 | Dashboard + player UI | **Worker Static Assets** (`./public`) |
 | ZIP extraction | **In the browser** (fflate) — no server-side unzip |
 | Large uploads | **R2 multipart** with parallel parts (chunked + concurrent) |
+| Cold archive (optional) | Local **archive server** (`scripts/archive-server.mjs`) |
 
 **Upload flow:** the dashboard unzips the Godot export in the browser, then
 uploads each extracted file to R2. Files larger than 25 MB use R2 multipart
@@ -27,6 +28,21 @@ uploads with 4 parts in flight at once. The Worker only streams parts into R2.
 Because the version is in the path, every response is immutable and cached hard
 (`max-age=31536000, immutable`). Game files carry the `Cross-Origin-Opener-Policy`
 / `Cross-Origin-Embedder-Policy` headers Godot needs for `SharedArrayBuffer`.
+
+**Archive system (optional):** inactive game versions can be offloaded from R2 to
+a local machine running `archive-server.mjs`. The Worker cron job manages three
+flows automatically:
+
+- **Download** — after a new version is finalized, the archive server pulls it
+  from R2 to local storage and confirms via `/api/internal/archive-done`.
+- **Cleanup** — versions inactive for >4 hours with a confirmed local copy are
+  deleted from R2 (`storage` transitions `r2 → local`).
+- **Restore** — when an archived version is reactivated from the dashboard, the
+  archive server uploads it back to R2 (`storage` transitions `local → restoring
+  → r2`), then the Worker makes it the active version.
+
+Each version has a `storage` column: `r2` (in R2), `local` (archive only),
+or `restoring` (upload in progress). Restore can be cancelled mid-flight.
 
 ## One-time setup
 
@@ -52,6 +68,28 @@ npx wrangler secret put JWT_SECRET     # any random 32+ char string
 ```
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill in the values.
+
+### Archive server setup (optional)
+
+The archive server offloads inactive versions from R2 to a local machine to save
+storage costs. It must be reachable from the Worker — a Cloudflare Tunnel or
+similar is recommended.
+
+```bash
+# 1. Copy and fill in the config
+cp scripts/archive-server-config.example.json scripts/archive-server-config.json
+# Set: port, archiveDir, workerUrl, archiveSecret, adminUsername, adminPassword
+
+# 2. Add the matching secrets/vars to the Worker
+npx wrangler secret put ARCHIVE_SECRET   # same value as archiveSecret in config
+# ARCHIVE_URL = the public URL of your archive server (var in wrangler.jsonc)
+
+# 3. Run the server
+npm run archive
+```
+
+Without `ARCHIVE_URL` set, the Worker silently skips all archive operations and
+versions stay in R2 indefinitely — the rest of the platform works normally.
 
 ## Develop
 
