@@ -138,11 +138,12 @@ games.put('/:slug', requireAuth, async (c) => {
     return c.json({ game });
   }
 
-  // Cancel a pending restore — revert storage back to 'local'.
+  // Cancel a pending restore — revert storage back to 'local' and tell Pi to abort.
   if (typeof body.cancelRestore === 'number') {
     const gameId = await getGameId(c.env.DB, slug);
     if (!gameId) return c.json({ error: 'Game not found' }, 404);
     await setVersionStorage(c.env.DB, gameId, body.cancelRestore, 'local');
+    callPi(c.env, 'abort', { slug, version: body.cancelRestore }).catch(() => {});
     return c.json({ ok: true });
   }
 

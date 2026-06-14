@@ -763,10 +763,11 @@ editForm.addEventListener("submit", async (e) => {
   }
 
   if (storage === "local") {
-    // Show confirm before proceeding
+    // Hide edit modal immediately so user can't re-submit while confirming.
     _pendingRestoreSlug = slug;
     _pendingRestoreBody = body;
     /** @type {HTMLElement} */ ($("#restore-version-label")).textContent = `v${activeVersion}`;
+    toggle(editModal, false);
     toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), true);
     return;
   }

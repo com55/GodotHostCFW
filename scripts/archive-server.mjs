@@ -98,6 +98,10 @@ async function downloadVersion(slug, version) {
   console.log(`[archive] downloaded ${slug}/v${v} (${keys.length} files)`);
 }
 
+// ---- Abort flags -----------------------------------------------------------
+// Key: `${slug}:${version}` — set to true to request mid-restore abort.
+const abortFlags = new Map();
+
 // ---- R2 upload (restore) ---------------------------------------------------
 
 const PART = 25 * 1024 * 1024;
@@ -161,25 +165,41 @@ async function restoreVersion(slug, version) {
   const { dir: versionDir, version: v } = safeVersionDir(slug, version);
   if (!existsSync(versionDir)) throw new Error(`No local copy at ${versionDir}`);
 
-  const cookie = await loginWithRetry();
-  const files = walk(versionDir);
+  const flagKey = `${slug}:${v}`;
+  abortFlags.set(flagKey, false);
 
-  for (const rel of files) {
-    const buf = await readFile(join(versionDir, rel));
-    const key = `games/${slug}/v${v}/${rel.split('\\').join('/')}`;
-    console.log(`  ↑ ${key} (${(buf.length / 1048576).toFixed(1)} MB)`);
-    if (buf.length <= PART) await putSmall(cookie, key, buf);
-    else await putMultipart(cookie, key, buf);
+  try {
+    const cookie = await loginWithRetry();
+    const files = walk(versionDir);
+
+    for (const rel of files) {
+      if (abortFlags.get(flagKey)) {
+        console.log(`[archive] restore aborted for ${slug}/v${v}`);
+        return; // don't call restore-done — Worker already reverted storage to 'local'
+      }
+      const buf = await readFile(join(versionDir, rel));
+      const key = `games/${slug}/v${v}/${rel.split('\\').join('/')}`;
+      console.log(`  ↑ ${key} (${(buf.length / 1048576).toFixed(1)} MB)`);
+      if (buf.length <= PART) await putSmall(cookie, key, buf);
+      else await putMultipart(cookie, key, buf);
+    }
+
+    if (abortFlags.get(flagKey)) {
+      console.log(`[archive] restore aborted for ${slug}/v${v}`);
+      return;
+    }
+
+    const res = await fetch(`${workerUrl}/api/internal/restore-done`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-archive-secret': archiveSecret },
+      body: JSON.stringify({ slug, version: v }),
+    });
+    if (!res.ok) throw new Error(`restore-done callback failed: ${res.status}`);
+
+    console.log(`[archive] restored ${slug}/v${v} to R2`);
+  } finally {
+    abortFlags.delete(flagKey);
   }
-
-  const res = await fetch(`${workerUrl}/api/internal/restore-done`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-archive-secret': archiveSecret },
-    body: JSON.stringify({ slug, version: v }),
-  });
-  if (!res.ok) throw new Error(`restore-done callback failed: ${res.status}`);
-
-  console.log(`[archive] restored ${slug}/v${v} to R2`);
 }
 
 // ---- Local copy check ------------------------------------------------------
@@ -256,6 +276,13 @@ const server = createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/archive/confirm-local') {
       const { slug, version } = await readBody(req);
       return send(res, 200, { ok: hasLocalCopy(slug, version) });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/archive/abort') {
+      const { slug, version } = await readBody(req);
+      const { version: v } = safeVersionDir(slug, version);
+      abortFlags.set(`${slug}:${v}`, true);
+      return send(res, 200, { ok: true });
     }
 
     send(res, 404, { error: 'Not found' });

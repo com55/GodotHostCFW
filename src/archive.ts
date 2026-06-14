@@ -1,6 +1,6 @@
 import type { Env } from './types';
 
-type PiAction = 'download' | 'restore' | 'confirm-local';
+type PiAction = 'download' | 'restore' | 'confirm-local' | 'abort';
 
 /**
  * Call the Pi archive server. Returns true if Pi accepted, false if offline/error.
