@@ -292,6 +292,34 @@
     </div>
   </div>
 
+  <!-- Restore Confirm Modal -->
+  <div id="restore-confirm-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Restore Version</h3>
+      </div>
+      <p class="modal-body-text">เวอร์ชั่น <strong id="restore-version-label"></strong> เก็บอยู่บน Pi ระบบจะ restore ขึ้น R2 ก่อน อาจใช้เวลาสักครู่</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="restore-cancel-btn">ยกเลิก</button>
+        <button class="btn btn-primary" id="restore-confirm-btn">ดำเนินการ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pi Offline Modal -->
+  <div id="pi-offline-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>ไม่สามารถเชื่อมต่อได้</h3>
+      </div>
+      <p class="modal-body-text">ไม่สามารถ restore ได้เนื่องจากไม่สามารถเชื่อมต่อที่เก็บข้อมูลได้<br>จะให้ระบบดำเนินการในภายหลังเมื่อสามารถทำได้ หรือยกเลิก?</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="pi-offline-abort-btn">ยกเลิก</button>
+        <button class="btn btn-primary" id="pi-offline-queue-btn">ดำเนินการในภายหลัง</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" class="toast-container"></div>
 

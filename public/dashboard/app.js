@@ -657,13 +657,21 @@ function openEdit(slug) {
   const versionSelect = /** @type {HTMLSelectElement} */ (
     $("#edit-active-version")
   );
+  /** @type {Record<number, string>} */
+  versionSelect._storageMap = {};
   versionSelect.innerHTML = (game.versions || [])
-    .map(
-      (/** @type {any} */ v) =>
-        `<option value="${v.version}" ${v.version === game.activeVersion ? "selected" : ""}>
-      v${v.version} - ${formatSize(v.fileSize)} (${formatDate(v.uploadedAt)})
-    </option>`,
-    )
+    .map((/** @type {any} */ v) => {
+      versionSelect._storageMap[v.version] = v.storage || "r2";
+      const tag =
+        v.storage === "local"
+          ? " [archived]"
+          : v.storage === "restoring"
+            ? " [restoring…]"
+            : "";
+      return `<option value="${v.version}" ${v.version === game.activeVersion ? "selected" : ""}>
+      v${v.version} - ${formatSize(v.fileSize)} (${formatDate(v.uploadedAt)})${tag}
+    </option>`;
+    })
     .join("");
 
   toggle(
@@ -674,22 +682,17 @@ function openEdit(slug) {
   toggle(editModal, true);
 }
 
-editForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const slug = /** @type {HTMLInputElement} */ ($("#edit-slug")).value;
+// Pending state for restore confirm flow
+let _pendingRestoreSlug = "";
+let _pendingRestoreBody = /** @type {any} */ (null);
+
+/**
+ * Send the PUT request and handle all responses including restore flows.
+ * @param {string} slug
+ * @param {any} body
+ */
+async function submitEditGame(slug, body) {
   const editError = /** @type {HTMLElement} */ ($("#edit-error"));
-
-  const body = {
-    title: /** @type {HTMLInputElement} */ ($("#edit-title")).value.trim(),
-    description: /** @type {HTMLTextAreaElement} */ ($("#edit-desc")).value,
-    visibility: editVisibility.value,
-    accessCode: /** @type {HTMLInputElement} */ ($("#edit-access-code")).value,
-    activeVersion: parseInt(
-      /** @type {HTMLSelectElement} */ ($("#edit-active-version")).value,
-      10,
-    ),
-  };
-
   try {
     const res = await fetch(`${API.games}/${slug}`, {
       method: "PUT",
@@ -701,15 +704,99 @@ editForm.addEventListener("submit", async (e) => {
       toggle(editModal, false);
       showToast("Game updated!", "success");
       loadGames();
-    } else {
-      const data = await res.json();
-      editError.textContent = data.error || "Update failed";
-      toggle(editError, true);
+      return;
     }
+
+    const data = await res.json();
+
+    if (res.status === 503 && data.queued) {
+      // Pi offline — ask user to queue or cancel
+      _pendingRestoreSlug = slug;
+      _pendingRestoreBody = body;
+      toggle(editModal, false);
+      toggle(/** @type {HTMLElement} */ ($("#pi-offline-modal")), true);
+      return;
+    }
+
+    if (res.status === 409 && data.restoring) {
+      editError.textContent = "เวอร์ชั่นนี้กำลัง restore อยู่แล้ว กรุณารอสักครู่";
+      toggle(editError, true);
+      return;
+    }
+
+    editError.textContent = data.error || "Update failed";
+    toggle(editError, true);
   } catch {
     editError.textContent = "Connection failed";
     toggle(editError, true);
   }
+}
+
+editForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const slug = /** @type {HTMLInputElement} */ ($("#edit-slug")).value;
+  const editError = /** @type {HTMLElement} */ ($("#edit-error"));
+  toggle(editError, false);
+
+  const versionSelect = /** @type {any} */ ($("#edit-active-version"));
+  const activeVersion = parseInt(versionSelect.value, 10);
+  const storage = (versionSelect._storageMap || {})[activeVersion] || "r2";
+
+  const body = {
+    title: /** @type {HTMLInputElement} */ ($("#edit-title")).value.trim(),
+    description: /** @type {HTMLTextAreaElement} */ ($("#edit-desc")).value,
+    visibility: editVisibility.value,
+    accessCode: /** @type {HTMLInputElement} */ ($("#edit-access-code")).value,
+    activeVersion,
+  };
+
+  if (storage === "restoring") {
+    editError.textContent = "เวอร์ชั่นนี้กำลัง restore อยู่แล้ว กรุณารอสักครู่";
+    toggle(editError, true);
+    return;
+  }
+
+  if (storage === "local") {
+    // Show confirm before proceeding
+    _pendingRestoreSlug = slug;
+    _pendingRestoreBody = body;
+    const label = /** @type {HTMLElement} */ ($("#restore-version-label"));
+    label.textContent = `v${activeVersion}`;
+    toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), true);
+    return;
+  }
+
+  await submitEditGame(slug, body);
+});
+
+// Restore confirm modal
+$("#restore-confirm-btn").addEventListener("click", async () => {
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), false);
+  await submitEditGame(_pendingRestoreSlug, _pendingRestoreBody);
+});
+$("#restore-cancel-btn").addEventListener("click", () => {
+  toggle(/** @type {HTMLElement} */ ($("#restore-confirm-modal")), false);
+  _pendingRestoreSlug = "";
+  _pendingRestoreBody = null;
+});
+
+// Pi offline modal
+$("#pi-offline-queue-btn").addEventListener("click", () => {
+  toggle(/** @type {HTMLElement} */ ($("#pi-offline-modal")), false);
+  showToast("จะ restore อัตโนมัติเมื่อ Pi กลับมา online", "info");
+  loadGames();
+});
+$("#pi-offline-abort-btn").addEventListener("click", async () => {
+  toggle(/** @type {HTMLElement} */ ($("#pi-offline-modal")), false);
+  // Revert storage back to 'local'
+  if (_pendingRestoreSlug && _pendingRestoreBody) {
+    await fetch(`${API.games}/${_pendingRestoreSlug}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cancelRestore: _pendingRestoreBody.activeVersion }),
+    }).catch(() => {});
+  }
+  loadGames();
 });
 
 // ========================================

@@ -105,7 +105,7 @@ games.put('/:slug', requireAuth, async (c) => {
     if (!target) return c.json({ error: 'Version not found' }, 404);
 
     if (target.storage === 'restoring') {
-      return c.json({ error: 'Version is already being restored', restoring: true }, 409);
+      return c.json({ error: 'Version is already being restored', restoring: true }, 409 as 409);
     }
 
     if (target.storage === 'local') {
@@ -133,6 +133,14 @@ games.put('/:slug', requireAuth, async (c) => {
     // storage = 'r2': instant switch.
     const game = await switchActiveVersion(c.env.DB, slug, body.activeVersion);
     return c.json({ game });
+  }
+
+  // Cancel a pending restore — revert storage back to 'local'.
+  if (typeof body.cancelRestore === 'number') {
+    const gameId = await getGameId(c.env.DB, slug);
+    if (!gameId) return c.json({ error: 'Game not found' }, 404);
+    await setVersionStorage(c.env.DB, gameId, body.cancelRestore, 'local');
+    return c.json({ ok: true });
   }
 
   const game = await updateGame(c.env.DB, slug, body);
