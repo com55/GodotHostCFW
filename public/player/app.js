@@ -57,6 +57,16 @@ async function init() {
   document.title = `${info.title} - Game Host`;
   /** @type {HTMLElement} */ ($("#game-title-bar")).textContent = info.title;
   /** @type {HTMLElement} */ ($("#access-game-title")).textContent = info.title;
+
+  // Show version + description after the title
+  const meta = /** @type {HTMLElement} */ ($("#game-meta"));
+  if (info.description) {
+    meta.classList.remove("hidden");
+    /** @type {HTMLElement} */ ($("#game-version")).textContent = `v${info.activeVersion}`;
+    const descEl = /** @type {HTMLElement} */ ($("#game-desc"));
+    descEl.textContent = info.description;
+    descEl.addEventListener("click", () => showDescModal(info.description));
+  }
   if (info.iconPath) {
     /** @type {HTMLLinkElement} */ ($("#favicon")).href = `/g/${slug}/v${activeVersion}/${info.iconPath}`;
   }
@@ -152,6 +162,44 @@ function loadGame() {
     });
   }
 });
+
+// ========================================
+// Description Modal
+// ========================================
+
+function showDescModal(description) {
+  // Remove existing modal if any
+  const existing = document.getElementById("desc-modal");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "desc-modal";
+  overlay.className = "desc-overlay";
+
+  const card = document.createElement("div");
+  card.className = "desc-card";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Description";
+
+  const para = document.createElement("p");
+  para.className = "desc-text";
+  para.textContent = description;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "desc-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", () => overlay.remove());
+
+  card.append(heading, para, closeBtn);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
 
 // ========================================
 // Init
