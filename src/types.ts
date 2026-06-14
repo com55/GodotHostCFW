@@ -5,7 +5,7 @@ export interface Env {
   ADMIN_USERNAME: string;
   ADMIN_PASSWORD: string;
   JWT_SECRET: string;
-  ARCHIVE_URL: string;
+  ARCHIVE_URL?: string;
   ARCHIVE_SECRET: string;
 }
 

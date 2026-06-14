@@ -25,12 +25,10 @@
     }
   ],
   "observability": { "enabled": true },
-  "routes": [
-    { "pattern": "your-domain.example.com", "custom_domain": true }
-  ],
+  // Custom domains are managed via CF dashboard — do not add host-specific values here.
   "vars": {
-    "ADMIN_USERNAME": "admin",
-    "ARCHIVE_URL": "https://your-archive-api.example.com"
+    "ADMIN_USERNAME": "admin"
+    // ARCHIVE_URL is a secret — set via: wrangler secret put ARCHIVE_URL
   },
   "triggers": {
     "crons": ["0 * * * *"]

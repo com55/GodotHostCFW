@@ -29,8 +29,10 @@ Self-hosted Godot 4 web-export platform on Cloudflare. See README.md for setup.
 - Avoid `npx wrangler types` — spawns workerd, OOMs on low-mem/ARM, not needed.
 
 ## Secrets
-- `ADMIN_PASSWORD`, `JWT_SECRET` via `wrangler secret put`; `ADMIN_USERNAME` is a
-  var in wrangler.jsonc. Local dev: copy `.dev.vars.example` → `.dev.vars`.
+- Secrets via `wrangler secret put`: `ADMIN_PASSWORD`, `JWT_SECRET`, `ARCHIVE_URL`,
+  `ARCHIVE_SECRET`. `ADMIN_USERNAME` is a var in wrangler.jsonc.
+- Custom domains: managed via CF dashboard — not stored in wrangler.jsonc.
+- Local dev: copy `.dev.vars.example` → `.dev.vars`.
 
 ## Migration gotcha
 - `wrangler r2 object put` caps files at 300 MiB — Godot `.pck` exceeds this.
