@@ -294,6 +294,10 @@ export async function switchActiveVersion(
     db
       .prepare('UPDATE games SET active_version = ?, updated_at = ? WHERE id = ?')
       .bind(newVersion, now, g.id),
+    // Clear deactivated_at on the version being activated (may have been set from a prior switch).
+    db
+      .prepare('UPDATE versions SET deactivated_at = NULL WHERE game_id = ? AND version = ?')
+      .bind(g.id, newVersion),
   ];
   if (g.active_version !== newVersion) {
     stmts.push(
