@@ -25,9 +25,12 @@
     }
   ],
   "observability": { "enabled": true },
+  "routes": [
+    { "pattern": "your-domain.example.com", "custom_domain": true }
+  ],
   "vars": {
     "ADMIN_USERNAME": "admin",
-    "ARCHIVE_URL": ""
+    "ARCHIVE_URL": "https://your-archive-api.example.com"
   },
   "triggers": {
     "crons": ["0 * * * *"]
